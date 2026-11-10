@@ -7,6 +7,8 @@ import { rcedit } from "rcedit";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(root, "release", "FengmangLabel-win32-x64");
 const electronDist = path.join(root, "node_modules", "electron", "dist");
+const pkg = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
+const version = String(pkg.version || "0.0.0");
 
 if (!existsSync(path.join(root, "dist", "index.html"))) {
   console.error("缺少 dist/index.html，请先运行 npm run build");
@@ -35,8 +37,8 @@ await rcedit(exePath, {
     CompanyName: "锋芒标签打印",
     OriginalFilename: "锋芒标签打印.exe",
   },
-  "file-version": "0.1.0.0",
-  "product-version": "0.1.0.0",
+  "file-version": `${version}.0`,
+  "product-version": `${version}.0`,
 });
 
 console.log("→ 写入应用资源");
@@ -53,7 +55,7 @@ await fs.copyFile(
 await fs.writeFile(
   path.join(outDir, "使用说明.txt"),
   [
-    "锋芒标签打印 0.1.0（免安装版）",
+    `锋芒标签打印 ${version}（免安装版）`,
     "",
     "1. 双击 锋芒标签打印.exe 启动。",
     "2. 从模板库点一张标签，改内容后点“打印”。",

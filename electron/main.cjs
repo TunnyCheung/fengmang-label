@@ -197,7 +197,7 @@ function registerIpc() {
       const deviceName = opts && typeof opts.printer === 'string' ? opts.printer.trim() : '';
       if (deviceName) options.deviceName = deviceName;
       const copies = Math.floor(Number(opts && opts.copies));
-      if (Number.isFinite(copies) && copies > 0) options.copies = Math.min(copies, 99);
+      if (Number.isFinite(copies) && copies > 0) options.copies = Math.min(copies, 999);
 
       // Pin the physical page to the label size (microns) so the driver does not
       // fall back to A4 and blow the artwork up.

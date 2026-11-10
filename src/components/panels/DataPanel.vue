@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useDesigner } from "@/stores/designer";
 import { useData } from "@/stores/data";
 import { useUi } from "@/stores/ui";
 import Icon from "@/components/ui/Icon.vue";
+import BatchDialog from "@/components/dialogs/BatchDialog.vue";
 
 const design = useDesigner();
 const data = useData();
 const ui = useUi();
 const fileRef = ref<HTMLInputElement | null>(null);
+const batchOpen = ref(false);
+const mappedCount = computed(
+  () => data.columns.filter((column) => column !== data.copiesColumn && data.mapping[column]).length,
+);
 
 async function pickFile() {
   if (window.labelcraft) {
@@ -17,7 +22,7 @@ async function pickFile() {
     });
     if (res.ok && res.text) {
       try {
-        data.importCsv(res.name ?? "数据", res.text);
+        data.importText(res.name ?? "数据", res.text);
         ui.toast(`已导入 ${data.rows.length} 行数据`, "ok");
       } catch (err) {
         ui.toast((err as Error).message, "error");
@@ -33,7 +38,7 @@ async function onFile(e: Event) {
   if (!f) return;
   const text = await f.text();
   try {
-    data.importCsv(f.name, text);
+    data.importText(f.name, text);
     ui.toast(`已导入 ${data.rows.length} 行数据`, "ok");
   } catch (err) {
     ui.toast((err as Error).message, "error");
@@ -104,13 +109,13 @@ function move(delta: number) {
 
     <div class="hint-row">
       <span class="eyebrow">批量数据</span>
-      <span class="tip-text">CSV / TSV</span>
+      <span class="tip-text">CSV / Excel 粘贴</span>
     </div>
     <div v-if="!data.rows.length" class="drop" @click="pickFile">
       <Icon name="upload" :size="16" />
       <div>
         <b>导入表格数据</b>
-        <span>首行为列名，可批量预览与打印</span>
+        <span>首行为列名，导入后映射字段</span>
       </div>
     </div>
     <template v-else>
@@ -119,23 +124,38 @@ function move(delta: number) {
         <span class="fname">{{ data.sourceName }}</span>
         <button class="del" @click="data.clearRows()"><Icon name="x" :size="12" /></button>
       </div>
+      <div class="batch-sum tnum">
+        <span>{{ data.rows.length }} 条</span>
+        <i />
+        <span>已选 {{ data.selected.length }}</span>
+        <i />
+        <span>映射 {{ mappedCount }}/{{ data.columns.length }}</span>
+      </div>
+      <button class="btn sm" style="width: 100%" @click="batchOpen = true">
+        <Icon name="table" :size="13" /> 管理批量数据
+      </button>
       <div class="record">
         <button class="btn sm icon" :disabled="data.recordIndex <= 0" @click="move(-1)">
           <Icon name="chevronLeft" :size="14" />
         </button>
         <div class="rc tnum">
-          第 <b>{{ data.recordIndex + 1 }}</b> / {{ data.rows.length }} 条
+          预览第 <b>{{ data.recordIndex + 1 }}</b> / {{ data.rows.length }} 条
         </div>
         <button class="btn sm icon" :disabled="data.recordIndex >= data.total - 1" @click="move(1)">
           <Icon name="chevronRight" :size="14" />
         </button>
       </div>
-      <button class="btn sm" style="width: 100%" @click="pickFile">
-        <Icon name="refresh" :size="13" /> 重新导入
-      </button>
+      <div class="batch-actions">
+        <button class="btn sm" @click="pickFile"><Icon name="refresh" :size="13" /> 重新导入</button>
+        <button class="btn sm danger" @click="data.clearRows()"><Icon name="trash" :size="13" /> 清空</button>
+      </div>
     </template>
+    <button v-if="!data.rows.length" class="link" @click="batchOpen = true">
+      粘贴 Excel 数据 / 管理批量
+    </button>
 
     <input ref="fileRef" type="file" accept=".csv,.txt,.tsv" hidden @change="onFile" />
+    <BatchDialog v-if="batchOpen" @close="batchOpen = false" />
   </div>
 </template>
 
@@ -224,4 +244,27 @@ function move(delta: number) {
 .record { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .rc { flex: 1; text-align: center; font-size: 12px; color: var(--ink-3); }
 .rc b { color: var(--ink); }
+.batch-sum {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-3);
+  margin: -1px 0 7px;
+}
+.batch-sum i { width: 2.5px; height: 2.5px; border-radius: 50%; background: #cfd5dd; }
+.batch-actions { display: flex; gap: 6px; }
+.batch-actions .btn { flex: 1; }
+.btn.danger { color: #b4382f; }
+.btn.danger:hover { background: var(--danger-soft); border-color: #f0c8c2; }
+.link {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--accent-ink);
+  text-align: center;
+  padding: 3px;
+}
+.link:hover { text-decoration: underline; }
 </style>

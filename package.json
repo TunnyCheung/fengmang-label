@@ -1,7 +1,7 @@
 {
   "name": "labelcraft",
   "productName": "锋芒标签打印",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "锋芒标签打印 — 桌面标签设计打印工具",
   "type": "module",

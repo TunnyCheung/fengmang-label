@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useDesigner } from "@/stores/designer";
 import { useData } from "@/stores/data";
 import { useSettings } from "@/stores/settings";
 import { useUi } from "@/stores/ui";
 import { MM_PER_INCH } from "@/core/units";
-import { resolveValues } from "@/core/resolve";
 import Icon from "@/components/ui/Icon.vue";
 import LabelCanvas from "@/components/canvas/LabelCanvas.vue";
 import SizeSelect from "@/components/ui/SizeSelect.vue";
@@ -21,14 +20,39 @@ const copies = ref(settings.copies);
 const printer = ref(settings.printer);
 const busy = ref(false);
 const error = ref("");
-const allRows = ref(false);
+const scope = ref<"current" | "selected" | "all">("current");
+const progress = ref({ done: 0, total: 0 });
+const cancelled = ref(false);
 const advanced = ref(false);
 const density = ref(settings.density);
 const speed = ref(settings.speed);
 const offset = ref(settings.offset);
 const stage = ref<InstanceType<typeof LabelCanvas> | null>(null);
 
-const jobCount = computed(() => (allRows.value ? Math.max(1, data.rows.length) : 1));
+const hasRows = computed(() => data.rows.length > 0);
+const plan = computed(() => {
+  if (!hasRows.value) return [];
+  const indexes =
+    scope.value === "all"
+      ? data.rows.map((_, index) => index)
+      : scope.value === "selected"
+        ? data.rows.map((row, index) => (data.selected.includes(row.id) ? index : -1)).filter((i) => i >= 0)
+        : [Math.min(data.recordIndex, data.rows.length - 1)];
+  return indexes
+    .filter((index) => index >= 0 && index < data.rows.length)
+    .map((index) => ({
+      index,
+      id: data.rows[index].id,
+      copies: data.copiesFor(data.rows[index].id, copies.value),
+    }));
+});
+const totalLabels = computed(() => {
+  if (!plan.value.length) return copies.value;
+  return plan.value.reduce((sum, item) => sum + item.copies, 0);
+});
+const progressPct = computed(() =>
+  progress.value.total ? Math.round((progress.value.done / progress.value.total) * 100) : 0,
+);
 const paper = computed(() => design.doc.paper);
 const previewScale = computed(() => {
   const w = 330;
@@ -57,10 +81,7 @@ function resolveLanguage(): "zpl" | "tspl" {
 }
 
 function valuesFor(index: number) {
-  const base = resolveValues(design.doc.variables, index, data.overrides);
-  const row = data.rows[index];
-  if (row) for (const [k, v] of Object.entries(row)) if (k && v !== "") base[k] = v;
-  return base;
+  return data.valuesForRow(data.rows[index], index);
 }
 
 async function ensureReady() {
@@ -75,8 +96,13 @@ async function ensureReady() {
 async function run() {
   error.value = "";
   busy.value = true;
+  cancelled.value = false;
+  progress.value = { done: 0, total: plan.value.length };
   try {
     await ensureReady();
+    if (hasRows.value && scope.value === "selected" && !plan.value.length) {
+      throw new Error("还没有选中要打印的数据行，请回到批量数据勾选");
+    }
     settings.copies = copies.value;
     settings.density = density.value;
     settings.speed = speed.value;
@@ -88,41 +114,67 @@ async function run() {
     if (mode.value === "label") {
       const { buildLabelCommands } = await import("@/print");
       const lang = resolveLanguage();
-      const chunks: string[] = [];
-      for (let i = 0; i < jobCount.value; i++) {
-        const values = valuesFor(i);
-        chunks.push(
-          await buildLabelCommands(design.doc, values, lang, {
-            dpi: design.doc.paper.dpi,
-            density: density.value,
-            speed: speed.value,
-            offset: offset.value,
-            copies: copies.value,
-          }),
-        );
+      const targets = plan.value.length ? plan.value : [{ index: data.recordIndex, id: "", copies: copies.value }];
+      const chunkSize = 20;
+      let sentLabels = 0;
+      let sentRows = 0;
+      for (let start = 0; start < targets.length; start += chunkSize) {
+        if (cancelled.value) break;
+        const slice = targets.slice(start, start + chunkSize);
+        const commands: string[] = [];
+        for (const item of slice) {
+          commands.push(
+            await buildLabelCommands(design.doc, valuesFor(item.index), lang, {
+              dpi: design.doc.paper.dpi,
+              density: density.value,
+              speed: speed.value,
+              offset: offset.value,
+              copies: item.copies,
+            }),
+          );
+          sentLabels += item.copies;
+        }
+        const res = await window.labelcraft!.printLabel({
+          printer: printer.value,
+          language: lang,
+          commands: commands.join("\n"),
+          jobName: design.doc.name,
+        });
+        if (!res.ok) throw new Error(res.error || "打印失败");
+        sentRows += slice.length;
+        progress.value = { done: sentRows, total: targets.length };
       }
-      const res = await window.labelcraft!.printLabel({
-        printer: printer.value,
-        language: lang,
-        commands: chunks.join("\n"),
-        jobName: design.doc.name,
-      });
-      if (!res.ok) throw new Error(res.error || "打印失败");
-      ui.toast(`已发送 ${jobCount.value} 个标签任务到「${printer.value}」`, "ok");
+      if (cancelled.value) {
+        ui.toast(`已取消，已发送 ${sentLabels} 张`, "warn");
+      } else {
+        ui.toast(`已发送 ${sentRows} 条 · ${sentLabels} 张到「${printer.value}」`, "ok");
+      }
       close();
       return;
     }
 
     if (mode.value === "system") {
-      await renderToPrintRoot(0);
-      await waitForPrintImage();
-      const res = await window.labelcraft?.printSystem({
-        printer: printer.value || undefined,
-        copies: copies.value,
-        pageSize: { width: paper.value.width, height: paper.value.height },
-      });
-      if (res && !res.ok) throw new Error(res.error || "系统打印失败");
-      ui.toast("已发送到系统打印队列", "ok");
+      const targets = plan.value.length ? plan.value : [{ index: data.recordIndex, id: "", copies: copies.value }];
+      for (const item of targets) {
+        if (cancelled.value) break;
+        data.recordIndex = item.index;
+        await nextTick();
+        await renderToPrintRoot(item.index);
+        await waitForPrintImage();
+        const res = await window.labelcraft?.printSystem({
+          printer: printer.value || undefined,
+          copies: item.copies,
+          pageSize: { width: paper.value.width, height: paper.value.height },
+        });
+        if (res && !res.ok) throw new Error(res.error || "系统打印失败");
+        progress.value = { done: progress.value.done + 1, total: targets.length };
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+      if (cancelled.value) {
+        ui.toast(`已取消，已打印 ${progress.value.done} 条`, "warn");
+      } else {
+        ui.toast(`已发送 ${progress.value.done} 条到系统打印队列`, "ok");
+      }
       close();
       return;
     }
@@ -158,20 +210,31 @@ async function exportZpl() {
   error.value = "";
   try {
     const { buildLabelCommands } = await import("@/print");
-    const zpl = await buildLabelCommands(design.doc, valuesFor(0), "zpl", {
-      dpi: paper.value.dpi,
-      density: density.value,
-      speed: speed.value,
-      offset: offset.value,
-      copies: copies.value,
-    });
+    const targets = plan.value.length
+      ? plan.value
+      : [{ index: data.recordIndex, id: "", copies: copies.value }];
+    progress.value = { done: 0, total: targets.length };
+    const parts: string[] = [];
+    for (const item of targets) {
+      parts.push(
+        await buildLabelCommands(design.doc, valuesFor(item.index), "zpl", {
+          dpi: paper.value.dpi,
+          density: density.value,
+          speed: speed.value,
+          offset: offset.value,
+          copies: item.copies,
+        }),
+      );
+      progress.value = { done: progress.value.done + 1, total: targets.length };
+    }
+    const zpl = parts.join("\n");
     if (window.labelcraft) {
       const r = await window.labelcraft.saveFile({
-        defaultName: `${design.doc.name}.zpl`,
+        defaultName: `${design.doc.name}${targets.length > 1 ? `-${targets.length}条` : ""}.zpl`,
         filters: [{ name: "ZPL 指令", extensions: ["zpl"] }],
         data: zpl,
       });
-      if (r.ok) ui.toast("ZPL 已导出，可直接发给打印机", "ok");
+      if (r.ok) ui.toast(`已导出 ${targets.length} 条 ZPL`, "ok");
     } else {
       const blob = new Blob([zpl], { type: "text/plain" });
       const a = document.createElement("a");
@@ -217,7 +280,12 @@ function cleanupPrintRoot() {
 onMounted(() => {
   if (!settings.printers.length) settings.refreshPrinters();
   if (settings.mode) mode.value = settings.desktop ? settings.mode : "export";
+  if (data.rows.length && data.selected.length) scope.value = "selected";
 });
+
+function cancelPrint() {
+  cancelled.value = true;
+}
 
 function close() {
   cleanupPrintRoot();
@@ -294,12 +362,28 @@ function close() {
             </label>
           </div>
 
-          <label v-if="data.rows.length > 1" class="fld">
-            <span>数据范围</span>
-            <button class="btn" :class="{ on: allRows }" @click="allRows = !allRows">
-              {{ allRows ? `全部 ${data.rows.length} 条` : "仅当前 1 条" }}
-            </button>
-          </label>
+          <div v-if="hasRows" class="fld">
+            <span>打印范围 <i class="mini">{{ totalLabels }} 张</i></span>
+            <div class="seg scope">
+              <button :class="{ on: scope === 'current' }" @click="scope = 'current'">当前 1 条</button>
+              <button
+                :class="{ on: scope === 'selected' }"
+                :disabled="!data.selected.length"
+                @click="scope = 'selected'"
+              >
+                已选 {{ data.selected.length }}
+              </button>
+              <button :class="{ on: scope === 'all' }" @click="scope = 'all'">
+                全部 {{ data.rows.length }}
+              </button>
+            </div>
+            <p v-if="data.copiesColumn" class="scope-note">
+              份数取自「{{ data.copiesColumn }}」列，空值或非数字时用上面的默认份数。
+            </p>
+            <p v-else-if="data.issues && Object.keys(data.issues).length" class="scope-note warn">
+              批量数据里有重复或空值，打印前建议先在「批量数据」里检查。
+            </p>
+          </div>
 
           <button class="adv-toggle" @click="advanced = !advanced">
             <Icon :name="advanced ? 'chevronDown' : 'chevronRight'" :size="12" />
@@ -320,7 +404,24 @@ function close() {
         <div class="right">
           <div class="pv-head">
             <span class="eyebrow">打印预览</span>
-            <span class="pv-meta tnum">1 : 1 比例渲染</span>
+            <div v-if="hasRows" class="pv-nav tnum">
+              <button
+                class="pv-arrow"
+                :disabled="data.recordIndex <= 0"
+                @click="data.recordIndex = Math.max(0, data.recordIndex - 1)"
+              >
+                <Icon name="chevronLeft" :size="12" />
+              </button>
+              <span>第 {{ data.recordIndex + 1 }} / {{ data.rows.length }} 条</span>
+              <button
+                class="pv-arrow"
+                :disabled="data.recordIndex >= data.rows.length - 1"
+                @click="data.recordIndex = Math.min(data.rows.length - 1, data.recordIndex + 1)"
+              >
+                <Icon name="chevronRight" :size="12" />
+              </button>
+            </div>
+            <span v-else class="pv-meta tnum">1 : 1 比例渲染</span>
           </div>
           <div class="pv">
             <LabelCanvas
@@ -335,7 +436,7 @@ function close() {
             <i />
             {{ paper.dpi }} dpi
             <i />
-            {{ copies * jobCount }} 张
+            {{ totalLabels }} 张
           </div>
         </div>
       </div>
@@ -344,11 +445,24 @@ function close() {
         <button class="btn ghost" @click="exportZpl" :disabled="busy">
           <Icon name="download" :size="13" /> 导出 ZPL
         </button>
+        <div v-if="busy && progress.total > 1" class="progress">
+          <div class="bar"><i :style="{ width: `${progressPct}%` }" /></div>
+          <span class="tnum">{{ progress.done }} / {{ progress.total }}</span>
+        </div>
         <div class="spacer" />
-        <button class="btn" @click="close">取消</button>
+        <button v-if="busy" class="btn" @click="cancelPrint">停止</button>
+        <button v-else class="btn" @click="close">取消</button>
         <button class="btn primary" :disabled="busy" @click="run">
           <Icon :name="mode === 'export' ? 'download' : 'printer'" :size="14" />
-          {{ busy ? "处理中…" : mode === "export" ? "导出 PNG" : "开始打印" }}
+          {{
+            busy
+              ? progress.total > 1
+                ? `打印中 ${progress.done}/${progress.total}`
+                : "处理中…"
+              : mode === "export"
+                ? "导出 PNG（当前）"
+                : "开始打印"
+          }}
         </button>
       </footer>
     </div>
@@ -402,6 +516,10 @@ function close() {
 }
 .modes { margin-bottom: 2px; }
 .modes button { height: 28px; font-size: 12px; }
+.seg.scope { width: 100%; }
+.seg.scope button { flex: 1; height: 27px; font-size: 11.5px; }
+.scope-note { margin: 2px 0 0; font-size: 10.5px; line-height: 1.5; color: var(--ink-4); }
+.scope-note.warn { color: #9a6a12; }
 .mode-note {
   display: flex;
   gap: 6px;
@@ -464,6 +582,10 @@ function close() {
 .err { display: flex; gap: 6px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--danger-soft); color: #a32a2a; font-size: 11.5px; }
 .pv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .pv-meta { font-size: 10px; color: var(--ink-4); }
+.pv-nav { display: flex; align-items: center; gap: 3px; font-size: 10.5px; color: var(--ink-3); }
+.pv-arrow { display: flex; padding: 2px; border-radius: 4px; color: var(--ink-3); }
+.pv-arrow:hover:not(:disabled) { background: var(--surface-2); }
+.pv-arrow:disabled { opacity: 0.35; }
 .pv {
   flex: 1;
   display: grid;
@@ -479,4 +601,7 @@ function close() {
 .pv-foot i { width: 2.5px; height: 2.5px; border-radius: 50%; background: #d2d7de; }
 .foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
 .spacer { flex: 1; }
+.progress { display: flex; align-items: center; gap: 8px; width: 220px; font-size: 10.5px; color: var(--ink-3); }
+.progress .bar { flex: 1; height: 5px; border-radius: 3px; background: #e4e8ee; overflow: hidden; }
+.progress .bar i { display: block; height: 100%; background: var(--accent); transition: width 0.15s linear; }
 </style>
