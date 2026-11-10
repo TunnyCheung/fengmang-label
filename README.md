@@ -2,6 +2,8 @@
 
 面向 Windows 的桌面标签设计与打印工具。选模板 → 改内容 → 直接出标，同时给需要的人留了完整的画布编辑能力。
 
+**下载**：[免安装版 v0.1.0](https://github.com/TunnyCheung/fengmang-label/releases/latest)（Windows 10/11，解压即用）
+
 ![模板库](docs/screenshot-gallery.png)
 
 ## 它解决什么
