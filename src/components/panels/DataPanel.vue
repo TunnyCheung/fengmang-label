@@ -4,13 +4,11 @@ import { useDesigner } from "@/stores/designer";
 import { useData } from "@/stores/data";
 import { useUi } from "@/stores/ui";
 import Icon from "@/components/ui/Icon.vue";
-import BatchDialog from "@/components/dialogs/BatchDialog.vue";
 
 const design = useDesigner();
 const data = useData();
 const ui = useUi();
 const fileRef = ref<HTMLInputElement | null>(null);
-const batchOpen = ref(false);
 const mappedCount = computed(
   () => data.columns.filter((column) => column !== data.copiesColumn && data.mapping[column]).length,
 );
@@ -131,7 +129,7 @@ function move(delta: number) {
         <i />
         <span>映射 {{ mappedCount }}/{{ data.columns.length }}</span>
       </div>
-      <button class="btn sm" style="width: 100%" @click="batchOpen = true">
+      <button class="btn sm" style="width: 100%" @click="ui.batchOpen = true">
         <Icon name="table" :size="13" /> 管理批量数据
       </button>
       <div class="record">
@@ -150,12 +148,11 @@ function move(delta: number) {
         <button class="btn sm danger" @click="data.clearRows()"><Icon name="trash" :size="13" /> 清空</button>
       </div>
     </template>
-    <button v-if="!data.rows.length" class="link" @click="batchOpen = true">
+    <button v-if="!data.rows.length" class="link" @click="ui.batchOpen = true">
       粘贴 Excel 数据 / 管理批量
     </button>
 
     <input ref="fileRef" type="file" accept=".csv,.txt,.tsv" hidden @change="onFile" />
-    <BatchDialog v-if="batchOpen" @close="batchOpen = false" />
   </div>
 </template>
 

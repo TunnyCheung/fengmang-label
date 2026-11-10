@@ -84,7 +84,7 @@ function pasteImport() {
     ui.toast("先粘贴表格内容", "error");
     return;
   }
-  applyText("粘贴数据", pasteText.value);
+  applyText("粘贴导入", pasteText.value);
 }
 
 function selectRow(id: string) {
@@ -130,6 +130,11 @@ function duplicateSelected() {
   for (const id of ids) data.duplicateRow(id);
   data.clearSelection();
   if (ids.length) ui.toast(`已复制 ${ids.length} 行`, "ok");
+}
+
+function printSelected() {
+  ui.batchOpen = false;
+  ui.printOpen = true;
 }
 </script>
 
@@ -284,6 +289,9 @@ function duplicateSelected() {
         </label>
         <span class="sum tnum">已选 {{ data.selected.length }} · 份数合计 {{ plannedCopies }}</span>
         <div class="spacer" />
+        <button class="btn" :disabled="!data.selected.length" @click="printSelected">
+          <Icon name="printer" :size="13" /> 打印选中
+        </button>
         <button class="btn primary" @click="emit('close')">完成</button>
       </footer>
 

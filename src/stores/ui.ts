@@ -11,6 +11,7 @@ let seq = 0;
 
 export const useUi = defineStore("ui", () => {
   const printOpen = ref(false);
+  const batchOpen = ref(false);
   const helpOpen = ref(false);
   const aboutOpen = ref(false);
   const toasts = ref<Toast[]>([]);
@@ -27,5 +28,5 @@ export const useUi = defineStore("ui", () => {
     toasts.value = toasts.value.filter((t) => t.id !== id);
   }
 
-  return { printOpen, helpOpen, aboutOpen, toasts, toast, dismiss };
+  return { printOpen, batchOpen, helpOpen, aboutOpen, toasts, toast, dismiss };
 });

@@ -120,6 +120,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
               <i />
               <span>无需联网 · 本地保存</span>
             </div>
+            <div class="hero-batch">
+              <Icon name="table" :size="13" />
+              <span><b>支持批量</b>：CSV / Excel 粘贴导入 → 映射字段 → 按份数批量打印</span>
+            </div>
           </div>
           <div class="hero-art" aria-hidden="true">
             <div v-for="(t, i) in hero" :key="t.id" class="float" :class="`f${i}`">
@@ -300,6 +304,19 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 }
 .hero-facts b { color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
 .hero-facts i { width: 3px; height: 3px; border-radius: 50%; background: #c9ced6; }
+.hero-batch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 4px 9px 4px 7px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent-ink);
+  font-size: 11px;
+}
+.hero-batch b { font-weight: 650; }
 
 .hero-art {
   position: absolute;

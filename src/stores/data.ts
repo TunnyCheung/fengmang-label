@@ -14,7 +14,8 @@ interface ParsedTable {
   rows: string[][];
 }
 
-const LS = "labelcraft.batch.v1";
+const LS_PREFIX = "labelcraft.batch.v2:";
+const LS_LEGACY = "labelcraft.batch.v1";
 const MAX_ROWS = 5000;
 const COPIES_HEADER = /^(份数|数量|张数|copies|copy|qty|quantity|count)$/i;
 
@@ -27,10 +28,25 @@ interface Persisted {
   selected: string[];
 }
 
-function load(): Partial<Persisted> {
+function keyFor(docId: string) {
+  return `${LS_PREFIX}${docId}`;
+}
+
+function loadFor(docId: string): Partial<Persisted> {
   try {
-    const raw = localStorage.getItem(LS);
+    const raw = localStorage.getItem(keyFor(docId));
     return raw ? (JSON.parse(raw) as Partial<Persisted>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function takeLegacy(): Partial<Persisted> {
+  try {
+    const raw = localStorage.getItem(LS_LEGACY);
+    if (!raw) return {};
+    localStorage.removeItem(LS_LEGACY);
+    return JSON.parse(raw) as Partial<Persisted>;
   } catch {
     return {};
   }
@@ -95,7 +111,9 @@ export function parseTable(text: string): ParsedTable {
 
 export const useData = defineStore("data", () => {
   const design = useDesigner();
-  const saved = load();
+  let docId = design.doc.id;
+  let saved = loadFor(docId);
+  if (saved.rows === undefined && saved.columns === undefined) saved = takeLegacy();
 
   const snap = ref(true);
   const recordIndex = ref(0);
@@ -113,6 +131,18 @@ export const useData = defineStore("data", () => {
   const search = ref("");
 
   if (recordIndex.value >= rows.value.length) recordIndex.value = 0;
+
+  function applyState(next: Partial<Persisted>) {
+    rows.value = Array.isArray(next.rows) ? next.rows : [];
+    columns.value = Array.isArray(next.columns) ? next.columns : [];
+    mapping.value = next.mapping ?? {};
+    copiesColumn.value = next.copiesColumn ?? "";
+    sourceName.value = next.sourceName ?? "";
+    selected.value = Array.isArray(next.selected)
+      ? next.selected.filter((id) => rows.value.some((row) => row.id === id))
+      : [];
+    recordIndex.value = 0;
+  }
 
   function valuesForRow(row: BatchRow | undefined, index: number) {
     const base = resolveValues(design.doc.variables, index, overrides.value);
@@ -309,28 +339,41 @@ export const useData = defineStore("data", () => {
     overrides.value = { ...overrides.value, [key]: value };
   }
 
+  function persist(targetDoc = docId) {
+    const payload: Persisted = {
+      sourceName: sourceName.value,
+      columns: columns.value,
+      rows: rows.value,
+      mapping: mapping.value,
+      copiesColumn: copiesColumn.value,
+      selected: selected.value,
+    };
+    try {
+      localStorage.setItem(keyFor(targetDoc), JSON.stringify(payload));
+    } catch {
+      /* 超出本地存储配额时保留内存中的数据 */
+    }
+  }
+
   let saveTimer = 0;
   watch(
     [rows, columns, mapping, copiesColumn, sourceName, selected],
     () => {
       window.clearTimeout(saveTimer);
-      saveTimer = window.setTimeout(() => {
-        const payload: Persisted = {
-          sourceName: sourceName.value,
-          columns: columns.value,
-          rows: rows.value,
-          mapping: mapping.value,
-          copiesColumn: copiesColumn.value,
-          selected: selected.value,
-        };
-        try {
-          localStorage.setItem(LS, JSON.stringify(payload));
-        } catch {
-          /* 超出本地存储配额时保留内存中的数据 */
-        }
-      }, 400);
+      saveTimer = window.setTimeout(() => persist(), 400);
     },
     { deep: true },
+  );
+
+  watch(
+    () => design.doc.id,
+    (next, previous) => {
+      if (!next || !previous || next === previous) return;
+      window.clearTimeout(saveTimer);
+      persist(previous);
+      docId = next;
+      applyState(loadFor(next));
+    },
   );
 
   return {

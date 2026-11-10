@@ -23,6 +23,7 @@ const error = ref("");
 const scope = ref<"current" | "selected" | "all">("current");
 const progress = ref({ done: 0, total: 0 });
 const cancelled = ref(false);
+const failed = ref<{ index: number; id: string }[]>([]);
 const advanced = ref(false);
 const density = ref(settings.density);
 const speed = ref(settings.speed);
@@ -93,16 +94,29 @@ async function ensureReady() {
   }
 }
 
-async function run() {
+async function run(only?: number[]) {
   error.value = "";
   busy.value = true;
   cancelled.value = false;
-  progress.value = { done: 0, total: plan.value.length };
+  failed.value = [];
   try {
     await ensureReady();
     if (hasRows.value && scope.value === "selected" && !plan.value.length) {
       throw new Error("还没有选中要打印的数据行，请回到批量数据勾选");
     }
+    const allTargets = plan.value.length
+      ? plan.value
+      : [{ index: data.recordIndex, id: "", copies: copies.value }];
+    const targets = only
+      ? only
+          .filter((index) => index >= 0 && index < data.rows.length)
+          .map((index) => ({
+            index,
+            id: data.rows[index].id,
+            copies: data.copiesFor(data.rows[index].id, copies.value),
+          }))
+      : allTargets;
+    progress.value = { done: 0, total: targets.length };
     settings.copies = copies.value;
     settings.density = density.value;
     settings.speed = speed.value;
@@ -114,7 +128,6 @@ async function run() {
     if (mode.value === "label") {
       const { buildLabelCommands } = await import("@/print");
       const lang = resolveLanguage();
-      const targets = plan.value.length ? plan.value : [{ index: data.recordIndex, id: "", copies: copies.value }];
       const chunkSize = 20;
       let sentLabels = 0;
       let sentRows = 0;
@@ -140,7 +153,10 @@ async function run() {
           commands: commands.join("\n"),
           jobName: design.doc.name,
         });
-        if (!res.ok) throw new Error(res.error || "打印失败");
+        if (!res.ok) {
+          failed.value = slice.map((item) => ({ index: item.index, id: item.id }));
+          throw new Error(res.error || "打印失败");
+        }
         sentRows += slice.length;
         progress.value = { done: sentRows, total: targets.length };
       }
@@ -154,7 +170,6 @@ async function run() {
     }
 
     if (mode.value === "system") {
-      const targets = plan.value.length ? plan.value : [{ index: data.recordIndex, id: "", copies: copies.value }];
       for (const item of targets) {
         if (cancelled.value) break;
         data.recordIndex = item.index;
@@ -166,7 +181,10 @@ async function run() {
           copies: item.copies,
           pageSize: { width: paper.value.width, height: paper.value.height },
         });
-        if (res && !res.ok) throw new Error(res.error || "系统打印失败");
+        if (res && !res.ok) {
+          failed.value = [{ index: item.index, id: item.id }];
+          throw new Error(res.error || "系统打印失败");
+        }
         progress.value = { done: progress.value.done + 1, total: targets.length };
         await new Promise((resolve) => setTimeout(resolve, 80));
       }
@@ -287,6 +305,10 @@ function cancelPrint() {
   cancelled.value = true;
 }
 
+function retryFailed() {
+  if (failed.value.length) run(failed.value.map((item) => item.index));
+}
+
 function close() {
   cleanupPrintRoot();
   emit("close");
@@ -299,7 +321,10 @@ function close() {
       <header class="head">
         <div class="ht">
           <h3>打印标签</h3>
-          <p>{{ design.doc.name }} · {{ paper.width }}×{{ paper.height }} mm · {{ paper.dpi }} dpi</p>
+          <p>
+            {{ design.doc.name }} · {{ paper.width }}×{{ paper.height }} mm · {{ paper.dpi }} dpi
+            <template v-if="data.rows.length"> · 批量 {{ data.rows.length }} 条</template>
+          </p>
         </div>
         <button class="btn ghost icon" @click="close"><Icon name="x" :size="16" /></button>
       </header>
@@ -398,7 +423,18 @@ function close() {
               <input v-model.number="offset" class="range" type="range" min="-5" max="5" step="0.5" /></label>
           </div>
 
-          <div v-if="error" class="err"><Icon name="alert" :size="13" /><span>{{ error }}</span></div>
+          <div v-if="error" class="err">
+            <Icon name="alert" :size="13" />
+            <div class="err-body">
+              <span>{{ error }}</span>
+              <span v-if="failed.length" class="err-sub">
+                已成功 {{ progress.done }} 条，失败 {{ failed.length }} 条
+              </span>
+            </div>
+            <button v-if="failed.length" class="btn sm" @click="retryFailed">
+              重试失败 {{ failed.length }} 条
+            </button>
+          </div>
         </div>
 
         <div class="right">
@@ -452,7 +488,7 @@ function close() {
         <div class="spacer" />
         <button v-if="busy" class="btn" @click="cancelPrint">停止</button>
         <button v-else class="btn" @click="close">取消</button>
-        <button class="btn primary" :disabled="busy" @click="run">
+        <button class="btn primary" :disabled="busy" @click="run()">
           <Icon :name="mode === 'export' ? 'download' : 'printer'" :size="14" />
           {{
             busy
@@ -580,6 +616,9 @@ function close() {
 .adv { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--surface-2); border-radius: var(--r-md); border: 1px solid var(--line); }
 .range { width: 100%; accent-color: var(--accent); }
 .err { display: flex; gap: 6px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--danger-soft); color: #a32a2a; font-size: 11.5px; }
+.err .err-body { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.err .err-sub { font-size: 10.5px; opacity: 0.8; }
+.err .btn { align-self: center; flex: none; }
 .pv-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .pv-meta { font-size: 10px; color: var(--ink-4); }
 .pv-nav { display: flex; align-items: center; gap: 3px; font-size: 10.5px; color: var(--ink-3); }

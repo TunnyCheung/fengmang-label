@@ -8,6 +8,7 @@ import { CATEGORY_LABEL } from "@/core/template";
 import EditorStage from "@/components/canvas/EditorStage.vue";
 import LeftPanel from "@/components/panels/LeftPanel.vue";
 import PropertyPanel from "@/components/panels/PropertyPanel.vue";
+import BatchDialog from "@/components/dialogs/BatchDialog.vue";
 import Icon from "@/components/ui/Icon.vue";
 import WindowControls from "@/components/layout/WindowControls.vue";
 
@@ -87,6 +88,11 @@ function save() {
   ui.toast(`已保存「${design.doc.name}」到我的模板`, "ok");
 }
 
+function printBatch() {
+  data.selectAll(data.rows.map((row) => row.id));
+  ui.printOpen = true;
+}
+
 function back() {
   if (design.dirty) {
     design.saveToLibrary();
@@ -140,17 +146,59 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
       <button class="btn" @mousedown.prevent="design.saveToLibrary(); ui.toast('已保存到我的模板', 'ok')">
         <Icon name="save" :size="14" /> 保存
       </button>
+      <button
+        class="btn batch-entry"
+        :class="{ active: data.rows.length }"
+        title="导入并管理批量数据"
+        @click="ui.batchOpen = true"
+      >
+        <Icon name="table" :size="14" /> 批量
+        <span v-if="data.rows.length" class="count tnum">{{ data.rows.length }}</span>
+      </button>
       <button class="btn primary" @click="ui.printOpen = true">
         <Icon name="printer" :size="14" /> 打印
       </button>
       <WindowControls />
     </header>
 
+    <div v-if="data.rows.length" class="batch-bar">
+      <Icon name="table" :size="13" />
+      <b>批量数据</b>
+      <span class="bb-file">{{ data.sourceName || "未命名" }}</span>
+      <span class="bb-dot" />
+      <span class="tnum">{{ data.rows.length }} 条</span>
+      <span class="bb-dot" />
+      <span class="tnum">预览第 {{ data.recordIndex + 1 }} 条</span>
+      <div class="bb-nav">
+        <button
+          :disabled="data.recordIndex <= 0"
+          @click="data.recordIndex = Math.max(0, data.recordIndex - 1)"
+        >
+          <Icon name="chevronLeft" :size="12" />
+        </button>
+        <button
+          :disabled="data.recordIndex >= data.rows.length - 1"
+          @click="data.recordIndex = Math.min(data.rows.length - 1, data.recordIndex + 1)"
+        >
+          <Icon name="chevronRight" :size="12" />
+        </button>
+      </div>
+      <div class="spacer" />
+      <button class="btn ghost sm" @click="printBatch">
+        <Icon name="printer" :size="13" /> 打印全部
+      </button>
+      <button class="btn sm" @click="ui.batchOpen = true">
+        <Icon name="sliders" :size="13" /> 管理 / 映射
+      </button>
+    </div>
+
     <div class="body">
       <LeftPanel />
       <EditorStage ref="stage" />
       <PropertyPanel />
     </div>
+
+    <BatchDialog v-if="ui.batchOpen" @close="ui.batchOpen = false" />
   </div>
 </template>
 
@@ -209,5 +257,48 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 .spacer { flex: 1; }
 .group { display: flex; gap: 1px; }
 .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+.batch-entry.active { border-color: var(--accent-line); color: var(--accent-ink); background: var(--accent-soft); }
+.batch-entry .count {
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  line-height: 17px;
+  text-align: center;
+}
+.batch-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 10px 0 13px;
+  background: #f2f6ff;
+  border-bottom: 1px solid #dbe4f5;
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+.batch-bar b { color: var(--accent-ink); font-weight: 600; }
+.batch-bar :deep(svg) { color: var(--accent); }
+.bb-file {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+.bb-dot { width: 2.5px; height: 2.5px; border-radius: 50%; background: #b9c7e2; }
+.bb-nav { display: flex; gap: 1px; margin-left: 2px; }
+.bb-nav button {
+  display: flex;
+  padding: 2px;
+  border-radius: 4px;
+  color: var(--ink-3);
+}
+.bb-nav button:hover:not(:disabled) { background: #e4ecfb; color: var(--accent-ink); }
+.bb-nav button:disabled { opacity: 0.35; }
 .body { flex: 1; min-height: 0; display: flex; }
 </style>

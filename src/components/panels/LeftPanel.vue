@@ -50,7 +50,10 @@ function toggle(el: LabelElement, key: "hidden" | "locked") {
     <div class="tabs">
       <button :class="{ on: tab === 'elements' }" @click="tab = 'elements'">元素</button>
       <button :class="{ on: tab === 'layers' }" @click="tab = 'layers'">图层</button>
-      <button :class="{ on: tab === 'data' }" @click="tab = 'data'">数据</button>
+      <button :class="{ on: tab === 'data' }" @click="tab = 'data'">
+        数据
+        <span v-if="data.rows.length" class="tab-count tnum">{{ data.rows.length }}</span>
+      </button>
     </div>
 
     <div v-if="tab === 'elements'" class="pane">
@@ -184,6 +187,19 @@ function toggle(el: LabelElement, key: "hidden" | "locked") {
 }
 .tabs button:hover { color: var(--ink); background: var(--surface-2); }
 .tabs button.on { color: var(--ink); font-weight: 600; }
+.tab-count {
+  display: inline-block;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 3px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9.5px;
+  line-height: 16px;
+  font-weight: 600;
+}
 .tabs button.on::after {
   content: "";
   position: absolute;
