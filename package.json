@@ -54,7 +54,7 @@
       "target": [
         "portable"
       ],
-      "artifactName": "FengmangLabel-${version}-${arch}.${ext}",
+      "artifactName": "FengmangLabel-${version}.${ext}",
       "icon": "electron/icon.ico"
     }
   }

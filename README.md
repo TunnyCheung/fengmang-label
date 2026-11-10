@@ -73,7 +73,7 @@ npm run dev      # 浏览器调试（http://localhost:5178）
 npm run app      # 构建并以 Electron 启动
 npm run build    # 类型检查 + 生产构建
 npm run check    # 打印指令与 IPC 契约自检
-npm run pack     # 生成 release/FengmangLabel-win32-x64 免安装版
+npm run pack     # 生成 release/FengmangLabel 免安装版
 ```
 
 环境：Node ≥ 20、Windows 10/11。

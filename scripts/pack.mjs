@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { rcedit } from "rcedit";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const outDir = path.join(root, "release", "FengmangLabel-win32-x64");
+const outDir = path.join(root, "release", "FengmangLabel");
 const electronDist = path.join(root, "node_modules", "electron", "dist");
 const pkg = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
 const version = String(pkg.version || "0.0.0");
