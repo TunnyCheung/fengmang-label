@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs>
+    <linearGradient id="g" x1="0.08" y1="0" x2="0.92" y2="1">
+      <stop offset="0" stop-color="#4C86FF"/><stop offset="0.55" stop-color="#2F6BFF"/><stop offset="1" stop-color="#1B3FBF"/>
+    </linearGradient>
+    <mask id="m">
+      <rect width="1024" height="1024" fill="#000"/>
+      <rect x="188" y="292" width="648" height="440" rx="86" fill="#fff"/>
+      <rect x="268" y="378" width="286" height="62" rx="31" fill="#000"/>
+      <rect x="268" y="512" width="26" height="150" rx="6" fill="#000"/><rect x="316" y="512" width="12" height="150" rx="6" fill="#000"/><rect x="350" y="512" width="20" height="150" rx="6" fill="#000"/><rect x="392" y="512" width="12" height="150" rx="6" fill="#000"/><rect x="426" y="512" width="26" height="150" rx="6" fill="#000"/><rect x="474" y="512" width="12" height="150" rx="6" fill="#000"/><rect x="508" y="512" width="18" height="150" rx="6" fill="#000"/><rect x="548" y="512" width="12" height="150" rx="6" fill="#000"/>
+      <path d="M700 292 L836 428 L836 292 Z" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#g)"/>
+  <rect width="1024" height="1024" fill="#ffffff" mask="url(#m)"/></svg>
