@@ -111,4 +111,4 @@ scripts/          验证与打包脚本
 
 ## 许可
 
-本项目为独立实现，未使用 Vue-Print-Designer 的代码或素材。依赖：Vue 3、Pinia、JsBarcode、qrcode（均为 MIT）。
+本项目为独立实现。依赖：Vue 3、Pinia、JsBarcode、qrcode（均为 MIT）。
